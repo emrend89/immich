@@ -160,6 +160,56 @@ describe('duplicate utils', () => {
 
       expect(suggestDuplicate([largeWithLessExif, smallWithMoreExif])?.id).toBe('large-less-exif');
     });
+
+    describe('age', () => {
+      const withCreatedAt = (asset: AssetResponseDto, fileCreatedAt: string) => ({ ...asset, fileCreatedAt });
+
+      it('should prefer the largest asset when it is the oldest', () => {
+        const large = withCreatedAt(createAsset('large', 5000), '2020-01-01T00:00:00.000Z');
+        const small = withCreatedAt(createAsset('small', 1000), '2024-01-01T00:00:00.000Z');
+
+        expect(suggestDuplicate([large, small])?.id).toBe('large');
+        expect(suggestDuplicate([small, large])?.id).toBe('large');
+      });
+
+      it('should prefer the largest asset when it has the same age as the oldest', () => {
+        const large = withCreatedAt(createAsset('large', 5000), '2020-01-01T00:00:00.000Z');
+        const small = withCreatedAt(createAsset('small', 1000), '2020-01-01T00:00:00.000Z');
+
+        expect(suggestDuplicate([small, large])?.id).toBe('large');
+      });
+
+      it('should prefer a smaller asset that is at least 30 days older', () => {
+        const large = withCreatedAt(createAsset('large', 5000), '2020-01-31T00:00:00.000Z');
+        const small = withCreatedAt(createAsset('small', 1000), '2020-01-01T00:00:00.000Z');
+
+        expect(suggestDuplicate([large, small])?.id).toBe('small');
+        expect(suggestDuplicate([small, large])?.id).toBe('small');
+      });
+
+      it('should prefer the largest asset when the smaller asset is less than 30 days older', () => {
+        const large = withCreatedAt(createAsset('large', 5000), '2020-01-30T23:59:59.999Z');
+        const small = withCreatedAt(createAsset('small', 1000), '2020-01-01T00:00:00.000Z');
+
+        expect(suggestDuplicate([large, small])?.id).toBe('large');
+      });
+
+      it('should compare the largest asset against the oldest asset', () => {
+        const large = withCreatedAt(createAsset('large', 5000), '2024-01-01T00:00:00.000Z');
+        const medium = withCreatedAt(createAsset('medium', 3000), '2023-12-15T00:00:00.000Z');
+        const small = withCreatedAt(createAsset('small', 1000), '2022-01-01T00:00:00.000Z');
+
+        expect(suggestDuplicate([large, medium, small])?.id).toBe('small');
+      });
+
+      it('should prefer the largest of several equally old assets', () => {
+        const large = withCreatedAt(createAsset('large', 5000), '2024-01-01T00:00:00.000Z');
+        const oldMedium = withCreatedAt(createAsset('old-medium', 3000), '2020-01-01T00:00:00.000Z');
+        const oldSmall = withCreatedAt(createAsset('old-small', 1000), '2020-01-01T00:00:00.000Z');
+
+        expect(suggestDuplicate([oldSmall, large, oldMedium])?.id).toBe('old-medium');
+      });
+    });
   });
 
   describe('suggestDuplicateKeepAssetIds', () => {

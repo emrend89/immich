@@ -12,21 +12,25 @@ export const getExifCount = (asset: AssetResponseDto): number => {
 };
 
 /**
- * Suggests the best duplicate asset to keep from a list of duplicates.
- * This is a direct port of the client logic from web/src/lib/utils/duplicate-utils.ts
- *
- * The best asset is determined by the following criteria:
- *  1. Largest image file size in bytes
- *  2. Largest count of EXIF data (as tie-breaker)
- *
- * @param assets List of duplicate assets
- * @returns The best asset to keep, or undefined if empty list
+ * Minimum number of days a smaller file must be older than the largest file to be preferred over it.
  */
-export const suggestDuplicate = (assets: AssetResponseDto[]): AssetResponseDto | undefined => {
-  if (assets.length === 0) {
-    return undefined;
-  }
+export const DUPLICATE_AGE_THRESHOLD_DAYS = 30;
 
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Returns the creation time of an asset in milliseconds.
+ * Assets without a valid creation date are treated as the newest, so they never win on age.
+ */
+const getCreatedAtMs = (asset: AssetResponseDto): number => {
+  const time = new Date(asset.fileCreatedAt).getTime();
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
+};
+
+/**
+ * Picks the asset with the largest file size, using the EXIF count as tie-breaker.
+ */
+const getLargestAsset = (assets: AssetResponseDto[]): AssetResponseDto | undefined => {
   // Sort by file size ascending (smallest first)
   let duplicateAssets = [...assets].toSorted(
     (a, b) => (a.exifInfo?.fileSizeInByte ?? 0) - (b.exifInfo?.fileSizeInByte ?? 0),
@@ -45,6 +49,41 @@ export const suggestDuplicate = (assets: AssetResponseDto[]): AssetResponseDto |
 
   // Return the last asset (highest EXIF count among highest file size)
   return duplicateAssets.at(-1);
+};
+
+/**
+ * Suggests the best duplicate asset to keep from a list of duplicates.
+ *
+ * The best asset is determined by the following criteria:
+ *  1. The largest file (by file size in bytes, EXIF count as tie-breaker) wins if it is also the oldest
+ *  2. Otherwise the oldest file wins if it was created at least DUPLICATE_AGE_THRESHOLD_DAYS before the largest file
+ *  3. Otherwise the largest file wins
+ *
+ * The age of a file is based on its creation date (fileCreatedAt).
+ *
+ * @param assets List of duplicate assets
+ * @returns The best asset to keep, or undefined if empty list
+ */
+export const suggestDuplicate = (assets: AssetResponseDto[]): AssetResponseDto | undefined => {
+  if (assets.length === 0) {
+    return undefined;
+  }
+
+  const largest = getLargestAsset(assets);
+  if (!largest) {
+    return undefined;
+  }
+
+  // Find the oldest asset(s); if several share the oldest date, prefer the largest of them
+  const oldestCreatedAt = Math.min(...assets.map((asset) => getCreatedAtMs(asset)));
+  const oldest = getLargestAsset(assets.filter((asset) => getCreatedAtMs(asset) === oldestCreatedAt));
+
+  const largestCreatedAt = getCreatedAtMs(largest);
+  if (!oldest || largestCreatedAt <= oldestCreatedAt) {
+    return largest;
+  }
+
+  return largestCreatedAt - oldestCreatedAt >= DUPLICATE_AGE_THRESHOLD_DAYS * DAY_IN_MS ? oldest : largest;
 };
 
 /**
