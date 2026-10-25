@@ -15,7 +15,7 @@ const createAsset = (
   id,
   type: AssetType.Image,
   thumbhash: null,
-  localDateTime: new Date().toISOString(),
+  localDateTime: '2024-06-15T12:00:00.000Z',
   duration: 0,
   hasMetadata: true,
   width: 1920,
@@ -40,9 +40,9 @@ const createAsset = (
       : undefined,
 });
 
-const withCreatedAt = (asset: AssetResponseDto, fileCreatedAt: string): AssetResponseDto => ({
+const withLocalDateTime = (asset: AssetResponseDto, localDateTime: string): AssetResponseDto => ({
   ...asset,
-  fileCreatedAt,
+  localDateTime,
 });
 
 describe('duplicate utils', () => {
@@ -167,50 +167,52 @@ describe('duplicate utils', () => {
     });
 
     describe('age', () => {
-      it('should prefer the largest asset when it is the oldest', () => {
-        const large = withCreatedAt(createAsset('large', 5000), '2020-01-01T00:00:00.000Z');
-        const small = withCreatedAt(createAsset('small', 1000), '2024-01-01T00:00:00.000Z');
-
-        expect(suggestDuplicate([large, small])?.id).toBe('large');
-        expect(suggestDuplicate([small, large])?.id).toBe('large');
-      });
-
-      it('should prefer the largest asset when it has the same age as the oldest', () => {
-        const large = withCreatedAt(createAsset('large', 5000), '2020-01-01T00:00:00.000Z');
-        const small = withCreatedAt(createAsset('small', 1000), '2020-01-01T00:00:00.000Z');
-
-        expect(suggestDuplicate([small, large])?.id).toBe('large');
-      });
-
-      it('should prefer a smaller asset that is at least 30 days older', () => {
-        const large = withCreatedAt(createAsset('large', 5000), '2020-01-31T00:00:00.000Z');
-        const small = withCreatedAt(createAsset('small', 1000), '2020-01-01T00:00:00.000Z');
+      it('should prefer the oldest asset even when it is smaller', () => {
+        const large = withLocalDateTime(createAsset('large', 5000), '2020-01-02T00:00:00.000Z');
+        const small = withLocalDateTime(createAsset('small', 1000), '2020-01-01T23:59:59.999Z');
 
         expect(suggestDuplicate([large, small])?.id).toBe('small');
         expect(suggestDuplicate([small, large])?.id).toBe('small');
       });
 
-      it('should prefer the largest asset when the smaller asset is less than 30 days older', () => {
-        const large = withCreatedAt(createAsset('large', 5000), '2020-01-30T23:59:59.999Z');
-        const small = withCreatedAt(createAsset('small', 1000), '2020-01-01T00:00:00.000Z');
+      it('should prefer the oldest asset when it is also the largest', () => {
+        const large = withLocalDateTime(createAsset('large', 5000), '2020-01-01T00:00:00.000Z');
+        const small = withLocalDateTime(createAsset('small', 1000), '2024-01-01T00:00:00.000Z');
+
+        expect(suggestDuplicate([small, large])?.id).toBe('large');
+      });
+
+      it('should prefer the largest asset when created on the same day', () => {
+        const large = withLocalDateTime(createAsset('large', 5000), '2020-01-01T23:59:59.999Z');
+        const small = withLocalDateTime(createAsset('small', 1000), '2020-01-01T00:00:00.000Z');
 
         expect(suggestDuplicate([large, small])?.id).toBe('large');
+        expect(suggestDuplicate([small, large])?.id).toBe('large');
       });
 
-      it('should compare the largest asset against the oldest asset', () => {
-        const large = withCreatedAt(createAsset('large', 5000), '2024-01-01T00:00:00.000Z');
-        const medium = withCreatedAt(createAsset('medium', 3000), '2023-12-15T00:00:00.000Z');
-        const small = withCreatedAt(createAsset('small', 1000), '2022-01-01T00:00:00.000Z');
+      it('should prefer the largest of several assets from the oldest day', () => {
+        const newest = withLocalDateTime(createAsset('newest', 9000), '2024-01-01T00:00:00.000Z');
+        const oldMedium = withLocalDateTime(createAsset('old-medium', 3000), '2020-01-01T18:00:00.000Z');
+        const oldSmall = withLocalDateTime(createAsset('old-small', 1000), '2020-01-01T06:00:00.000Z');
 
-        expect(suggestDuplicate([large, medium, small])?.id).toBe('small');
+        expect(suggestDuplicate([oldSmall, newest, oldMedium])?.id).toBe('old-medium');
       });
 
-      it('should prefer the largest of several equally old assets', () => {
-        const large = withCreatedAt(createAsset('large', 5000), '2024-01-01T00:00:00.000Z');
-        const oldMedium = withCreatedAt(createAsset('old-medium', 3000), '2020-01-01T00:00:00.000Z');
-        const oldSmall = withCreatedAt(createAsset('old-small', 1000), '2020-01-01T00:00:00.000Z');
+      it('should use EXIF count as tie-breaker for assets from the same day with equal size', () => {
+        const lessExif = withLocalDateTime(createAsset('less-exif', 1000), '2020-01-01T08:00:00.000Z');
+        const moreExif = withLocalDateTime(
+          createAsset('more-exif', 1000, { make: 'Canon', model: 'EOS 5D' }),
+          '2020-01-01T09:00:00.000Z',
+        );
 
-        expect(suggestDuplicate([oldSmall, large, oldMedium])?.id).toBe('old-medium');
+        expect(suggestDuplicate([moreExif, lessExif])?.id).toBe('more-exif');
+      });
+
+      it('should not prefer assets with an invalid date', () => {
+        const invalid = withLocalDateTime(createAsset('invalid', 1000), 'not-a-date');
+        const valid = withLocalDateTime(createAsset('valid', 500), '2024-01-01T00:00:00.000Z');
+
+        expect(suggestDuplicate([invalid, valid])?.id).toBe('valid');
       });
     });
   });
