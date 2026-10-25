@@ -40,6 +40,11 @@ const createAsset = (
       : undefined,
 });
 
+const withCreatedAt = (asset: AssetResponseDto, fileCreatedAt: string): AssetResponseDto => ({
+  ...asset,
+  fileCreatedAt,
+});
+
 describe('duplicate utils', () => {
   describe('getExifCount', () => {
     it('should return 0 for asset without exifInfo', () => {
@@ -162,8 +167,6 @@ describe('duplicate utils', () => {
     });
 
     describe('age', () => {
-      const withCreatedAt = (asset: AssetResponseDto, fileCreatedAt: string) => ({ ...asset, fileCreatedAt });
-
       it('should prefer the largest asset when it is the oldest', () => {
         const large = withCreatedAt(createAsset('large', 5000), '2020-01-01T00:00:00.000Z');
         const small = withCreatedAt(createAsset('small', 1000), '2024-01-01T00:00:00.000Z');

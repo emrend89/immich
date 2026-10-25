@@ -24,7 +24,7 @@ const DAY_IN_MS = 24 * 60 * 60 * 1000;
  */
 const getCreatedAtMs = (asset: AssetResponseDto): number => {
   const time = new Date(asset.fileCreatedAt).getTime();
-  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
+  return Number.isNaN(time) ? Infinity : time;
 };
 
 /**
